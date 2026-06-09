@@ -42,7 +42,16 @@ app.post("/submitSurvey", async (req, res) => {
     });
   }
 });
-
+app.get("/surveys", async (req, res) => {
+  try {
+    const surveys = await Survey.find();
+    res.json(surveys);
+  } catch (error) {
+    res.status(500).json({
+      message: "Error Fetching Surveys",
+    });
+  }
+});
 app.listen(5000, () => {
   console.log("Server running on port 5000");
 });

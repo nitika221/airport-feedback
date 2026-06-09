@@ -1,7 +1,7 @@
-import SurveyPage from "./pages/SurveyPage";
+import AdminDashboard from "./pages/AdminDashboard";
 
 function App() {
-  return <SurveyPage />;
+  return <AdminDashboard />;
 }
 
 export default App;
