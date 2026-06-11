@@ -1,7 +1,14 @@
-import AdminDashboard from "./pages/AdminDashboard";
+import QRComponent from "./components/QRComponent";
+import SurveyPage from "./pages/SurveyPage";
 
 function App() {
-  return <AdminDashboard />;
+  return (
+    <>
+      <QRComponent />
+      <hr />
+      <SurveyPage />
+    </>
+  );
 }
 
 export default App;
