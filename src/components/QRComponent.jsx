@@ -1,11 +1,21 @@
 import { QRCodeCanvas } from "qrcode.react";
 
 function QRComponent() {
-  const surveyUrl = "http://172.20.10.2:5173";
+  const surveyUrl =
+    "http://192.168.1.13:5173/survey";
 
   return (
-    <div style={{ textAlign: "center", marginTop: "20px" }}>
-      <h2>Scan QR to Open Survey</h2>
+    <div
+      style={{
+        textAlign: "center",
+        marginTop: "50px",
+      }}
+    >
+      <h1>Airport Survey System</h1>
+
+      <h2>
+        Scan QR Code To Open Survey
+      </h2>
 
       <QRCodeCanvas
         value={surveyUrl}
