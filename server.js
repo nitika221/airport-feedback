@@ -17,47 +17,83 @@ mongoose
   .catch((err) => console.log(err));
 
 const defaultAirports = [
-  { name: "Safdarjung Airport", code: "VIDD", lat: 28.5845, lng: 77.2058 },
+  {
+    name: "Safdarjung Airport",
+    code: "VIDD",
+    lat: 28.5845,
+    lng: 77.2058,
+    radiusMeters: 500,
+  },
   {
     name: "Indira Gandhi International Airport",
     code: "VIDP",
     lat: 28.5562,
-    lng: 77.1,
+    lng: 77.1000,
+    radiusMeters: 1500,
   },
   {
     name: "Chhatrapati Shivaji Maharaj International Airport",
     code: "VABB",
     lat: 19.0896,
     lng: 72.8656,
+    radiusMeters: 1500,
   },
   {
     name: "Kempegowda International Airport",
     code: "VOBL",
     lat: 13.1986,
     lng: 77.7066,
+    radiusMeters: 1500,
   },
-  { name: "Chennai International Airport", code: "VOMM", lat: 12.9941, lng: 80.1709 },
+  {
+    name: "Chennai International Airport",
+    code: "VOMM",
+    lat: 12.9941,
+    lng: 80.1709,
+    radiusMeters: 1500,
+  },
   {
     name: "Netaji Subhas Chandra Bose International Airport",
     code: "VECC",
     lat: 22.6547,
     lng: 88.4467,
+    radiusMeters: 1500,
   },
   {
     name: "Rajiv Gandhi International Airport",
     code: "VOHS",
     lat: 17.2403,
     lng: 78.4294,
+    radiusMeters: 1500,
   },
-  { name: "Cochin International Airport", code: "VOCI", lat: 10.152, lng: 76.4019 },
+  {
+    name: "Cochin International Airport",
+    code: "VOCI",
+    lat: 10.1520,
+    lng: 76.4019,
+    radiusMeters: 1500,
+  },
   {
     name: "Sardar Vallabhbhai Patel International Airport",
     code: "VAAH",
     lat: 23.0772,
     lng: 72.6347,
+    radiusMeters: 1500,
   },
-  { name: "Pune International Airport", code: "VAPO", lat: 18.5821, lng: 73.9197 },
-  { name: "Test Airport", code: "TEST", lat: 28.6255, lng: 77.11 },
+  {
+    name: "Pune International Airport",
+    code: "VAPO",
+    lat: 18.5821,
+    lng: 73.9197,
+    radiusMeters: 1500,
+  },
+  {
+    name: "Test Airport",
+    code: "TEST",
+    lat: 28.6255,
+    lng: 77.1100,
+    radiusMeters: 500,
+  },
 ];
 
 const AirportSchema = new mongoose.Schema({
@@ -65,6 +101,7 @@ const AirportSchema = new mongoose.Schema({
   code: { type: String, required: true, unique: true },
   lat: { type: Number, default: 0 },
   lng: { type: Number, default: 0 },
+  radiusMeters: { type: Number, default: 500 },
   city: String,
   state: String,
   status: { type: String, default: "active" },
@@ -108,7 +145,23 @@ const SurveySchema = new mongoose.Schema({
 const Airport = mongoose.model("Airport", AirportSchema);
 const SurveySession = mongoose.model("SurveySession", SurveySessionSchema);
 const Survey = mongoose.model("Survey", SurveySchema);
+function distanceInMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
 
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) *
+      Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
 const seedAirports = async () => {
   await Promise.all(
     defaultAirports.map((airport) =>
@@ -173,13 +226,32 @@ app.post("/startSurvey", async (req, res) => {
     const expiresAt = new Date(startedAt.getTime() + SURVEY_DURATION_MS);
     const sessionId = crypto.randomUUID();
 
-    await SurveySession.create({
-      sessionId,
-      userIP: req.ip,
-      startedAt,
-      expiresAt,
-      submitted: false,
-    });
+   const deviceId =
+ req.headers["x-device-id"] ||
+ req.ip;
+
+const existing =
+ await SurveySession.findOne({
+   deviceId,
+   submitted:true,
+ });
+
+if(existing)
+{
+ return res.status(409).json({
+  message:
+   "Survey already submitted from this device."
+ });
+}
+
+await SurveySession.create({
+ sessionId,
+ deviceId,
+ userIP:req.ip,
+ startedAt,
+ expiresAt,
+ submitted:false,
+});
 
     res.json({ sessionId, startedAt, expiresAt, durationSeconds: 180 });
   } catch (error) {
@@ -208,9 +280,27 @@ app.post("/submitSurvey", async (req, res) => {
     }
 
     let session = await SurveySession.findOne({ sessionId });
+    const duplicateDevice =
+ await SurveySession.findOne({
+   deviceId:
+    session.deviceId,
+   submitted:true,
+ });
+
+if(
+ duplicateDevice &&
+ duplicateDevice.sessionId
+ !== sessionId
+)
+{
+ return res.status(409).json({
+   message:
+   "You have already participated."
+ });
+}
 
     if (!session && offlineQueued && sessionId.startsWith("offline-")) {
-      const startedAt = new Date(Date.now() - SURVEY_DURATION_MS);
+      const startedAt = new Date();
       session = await SurveySession.create({
         sessionId,
         userIP: req.ip,
@@ -239,13 +329,19 @@ if (existingSurvey) {
         message: "You have already submitted this survey.",
       });
     }
+const serverTime =
+  new Date();
 
-    const clientSubmittedAt = new Date(submittedAt || Date.now());
-    if (clientSubmittedAt > session.expiresAt) {
-      return res.status(400).json({
-        message: "Survey time expired. Please start a new survey.",
-      });
-    }
+if (
+  serverTime >
+  session.expiresAt
+)
+{
+  return res.status(400).json({
+    message:
+      "Survey time expired. Please start a new survey.",
+  });
+} 
 
     const survey = new Survey(req.body);
     await survey.save();

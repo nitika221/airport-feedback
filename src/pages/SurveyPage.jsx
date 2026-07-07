@@ -7,17 +7,83 @@ const API_URL = "http://localhost:5000";
 const PENDING_SURVEYS_KEY = "pendingSurveys";
 
 const fallbackAirports = [
-  { name: "Safdarjung Airport", code: "VIDD", lat: 28.5845, lng: 77.2058 },
-  { name: "Indira Gandhi International Airport", code: "VIDP", lat: 28.5562, lng: 77.1 },
-  { name: "Chhatrapati Shivaji Maharaj International Airport", code: "VABB", lat: 19.0896, lng: 72.8656 },
-  { name: "Kempegowda International Airport", code: "VOBL", lat: 13.1986, lng: 77.7066 },
-  { name: "Chennai International Airport", code: "VOMM", lat: 12.9941, lng: 80.1709 },
-  { name: "Netaji Subhas Chandra Bose International Airport", code: "VECC", lat: 22.6547, lng: 88.4467 },
-  { name: "Rajiv Gandhi International Airport", code: "VOHS", lat: 17.2403, lng: 78.4294 },
-  { name: "Cochin International Airport", code: "VOCI", lat: 10.152, lng: 76.4019 },
-  { name: "Sardar Vallabhbhai Patel International Airport", code: "VAAH", lat: 23.0772, lng: 72.6347 },
-  { name: "Pune International Airport", code: "VAPO", lat: 18.5821, lng: 73.9197 },
-  { name: "Test Airport", code: "TEST", lat: 28.6255, lng: 77.11 },
+  {
+    name: "Safdarjung Airport",
+    code: "VIDD",
+    lat: 28.5845,
+    lng: 77.2058,
+    radius: 5,
+  },
+  {
+    name: "Indira Gandhi International Airport",
+    code: "VIDP",
+    lat: 28.5562,
+    lng: 77.1,
+    radius: 10,
+  },
+  {
+    name: "Chhatrapati Shivaji Maharaj International Airport",
+    code: "VABB",
+    lat: 19.0896,
+    lng: 72.8656,
+    radius: 10,
+  },
+  {
+    name: "Kempegowda International Airport",
+    code: "VOBL",
+    lat: 13.1986,
+    lng: 77.7066,
+    radius: 10,
+  },
+  {
+    name: "Chennai International Airport",
+    code: "VOMM",
+    lat: 12.9941,
+    lng: 80.1709,
+    radius: 10,
+  },
+  {
+    name: "Netaji Subhas Chandra Bose International Airport",
+    code: "VECC",
+    lat: 22.6547,
+    lng: 88.4467,
+    radius: 10,
+  },
+  {
+    name: "Rajiv Gandhi International Airport",
+    code: "VOHS",
+    lat: 17.2403,
+    lng: 78.4294,
+    radius: 10,
+  },
+  {
+    name: "Cochin International Airport",
+    code: "VOCI",
+    lat: 10.152,
+    lng: 76.4019,
+    radius: 10,
+  },
+  {
+    name: "Sardar Vallabhbhai Patel International Airport",
+    code: "VAAH",
+    lat: 23.0772,
+    lng: 72.6347,
+    radius: 10,
+  },
+  {
+    name: "Pune International Airport",
+    code: "VAPO",
+    lat: 18.5821,
+    lng: 73.9197,
+    radius: 10,
+  },
+  {
+    name: "Test Airport",
+    code: "TEST",
+    lat: 28.6255,
+    lng: 77.11,
+    radius: 5,
+  },
 ];
 
 const questions = [
@@ -60,7 +126,22 @@ const mergeAirports = (baseAirports, addedAirports) => {
 
   return Array.from(airportMap.values());
 };
+function distanceInMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
 
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) *
+      Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) ** 2;
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
 function SurveyPage() {
   const navigate = useNavigate();
   const [airports, setAirports] = useState(fallbackAirports);
@@ -93,8 +174,20 @@ function SurveyPage() {
     city: "",
     state: "",
   });
+const selectedAirport = airports.find(
+  (airport) => airport.code === airportCode
+);
 
-  const isInsideAirport = distance !== null && distance < 0.02;
+const isInsideAirport =
+  selectedAirport &&
+  userLocation
+    ? distanceInMeters(
+        userLocation.lat,
+        userLocation.lng,
+        selectedAirport.lat,
+        selectedAirport.lng
+      ) <= (selectedAirport.radiusMeters || 1000)
+    : false;
 
   const sortedAirports = useMemo(() => {
     return [...airports].sort((a, b) => a.name.localeCompare(b.name));
@@ -201,23 +294,36 @@ function SurveyPage() {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         setUserLocation({ lat, lng });
-        let nearestAirport = sortedAirports[0];
-        let minDistance = Infinity;
+        let nearestAirport = null;
+let minDistance = Infinity;
 
-        sortedAirports.forEach((airport) => {
-          const distanceValue = Math.sqrt(
-            Math.pow(lat - airport.lat, 2) + Math.pow(lng - airport.lng, 2)
-          );
+sortedAirports.forEach((airport) => {
+  const distanceKm =
+    Math.sqrt(
+      Math.pow(lat - airport.lat, 2) +
+      Math.pow(lng - airport.lng, 2)
+    ) * 111;
 
-          if (distanceValue < minDistance) {
-            minDistance = distanceValue;
-            nearestAirport = airport;
-          }
-        });
+  if (distanceKm < minDistance) {
+    minDistance = distanceKm;
+    nearestAirport = airport;
+  }
+});
+console.log("Nearest Airport:", nearestAirport);
+console.log("Distance (km):", minDistance);
+setDistance(minDistance);
 
-        setAirportName(nearestAirport.name);
-        setAirportCode(nearestAirport.code);
-        setDistance(minDistance);
+if (
+  nearestAirport &&
+  minDistance <=
+    ((nearestAirport.radiusMeters || 1000) / 1000)
+) {
+  setAirportName(nearestAirport.name);
+  setAirportCode(nearestAirport.code);
+} else {
+  setAirportName("");
+  setAirportCode("");
+}
       },
       (error) => {
         console.log(error);
@@ -244,7 +350,7 @@ function SurveyPage() {
 
     setShowAddAirport(false);
     const selectedAirport = airports.find((airport) => airport.name === airportValue);
-
+    
     if (!selectedAirport) return;
     setAirportName(selectedAirport.name);
     setAirportCode(selectedAirport.code);
