@@ -95,6 +95,7 @@ const questions = [
   { key: "q6", text: "Experience at Boarding Gate?" },
   { key: "q7", text: "Overall Airport Experience?" },
 ];
+const totalQuestions = 10;
 
 const ratingOptions = [
   { label: "Did Not Use", value: 0 },
@@ -148,6 +149,7 @@ function SurveyPage() {
   const [airportName, setAirportName] = useState("");
   const [airportCode, setAirportCode] = useState("");
   const [comments, setComments] = useState("");
+const [issueCategory, setIssueCategory] = useState("");
   const [ratings, setRatings] = useState({
     q1: "",
     q2: "",
@@ -167,6 +169,7 @@ function SurveyPage() {
   const [validationError, setValidationError] = useState("");
   const [session, setSession] = useState(null);
   const [syncMessage, setSyncMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAddAirport, setShowAddAirport] = useState(false);
   const [newAirport, setNewAirport] = useState({
     name: "",
@@ -339,6 +342,17 @@ if (
     hour: "2-digit",
     minute: "2-digit",
   });
+  const completedQuestions =
+  (tripReason ? 1 : 0) +
+  (travelClass ? 1 : 0) +
+  (returnTrips ? 1 : 0) +
+  questions.filter(
+    (q) => ratings[q.key] !== ""
+  ).length;
+
+const progress = Math.round(
+  (completedQuestions / totalQuestions) * 100
+);
 
   const selectAirport = (airportValue) => {
     if (airportValue === "__other_airport__") {
@@ -415,6 +429,8 @@ if (
   };
 
   const handleSubmit = async () => {
+    setIsSubmitting(true);
+
     const hasAllRatings = questions.every((question) => ratings[question.key] !== "");
 
     if (!tripReason || !travelClass || !returnTrips || !hasAllRatings) {
@@ -439,6 +455,7 @@ if (
       returnTrips,
       ratings,
       comments,
+      issueCategory,
       sessionId: session?.sessionId,
       clientSubmissionId: crypto.randomUUID(),
       submittedAt: new Date().toISOString(),
@@ -464,9 +481,14 @@ if (
           ? error.message
           : "No internet detected. Survey saved offline and will sync automatically."
       );
+      
       navigate("/thank-you");
     }
+    finally {
+  setIsSubmitting(false);
+}
   };
+
 
   return (
     <div className="container survey-shell">
@@ -487,6 +509,23 @@ if (
       <div className="welcome-box">
         Welcome Passenger! Complete the survey within 3 minutes. 
       </div>
+      <div className="progress-wrapper">
+  <div className="progress-header">
+    <span>Survey Progress</span>
+    <span>{progress}%</span>
+  </div>
+
+  <div className="progress-bar">
+    <div
+      className="progress-fill"
+      style={{ width: `${progress}%` }}
+    ></div>
+  </div>
+
+ <small>
+  Completion Progress: {progress}%
+</small>
+</div>
 
       
 
@@ -635,21 +674,54 @@ if (
           </tbody>
         </table>
       </div>
+      <h3 className="section-title">
+  📌 Issue Category
+</h3>
+<select
+className="issue-category-select"
+  value={issueCategory}
+  onChange={(e) => setIssueCategory(e.target.value)}
+>
+  <option value="">Select Issue Category</option>
+  <option value="Cleanliness">🧹 Cleanliness</option>
+  <option value="Security">👮 Security</option>
+  <option value="Washroom">🚻 Washroom</option>
+  <option value="Parking">🅿️ Parking</option>
+  <option value="Food & Retail">🍔 Food & Retail</option>
+  <option value="Staff Behaviour">👨‍💼 Staff Behaviour</option>
+  <option value="Other">📌 Other</option>
+</select>
 
       <h3>Additional Comments</h3>
       <textarea
         placeholder="Enter your comments here..."
         rows="4"
+        maxLength={500}
         value={comments}
         onChange={(e) => setComments(e.target.value)}
       />
+      <div
+  style={{
+    textAlign: "right",
+    marginTop: "6px",
+    fontSize: "14px",
+    color: comments.length > 450 ? "#dc2626" : "#666",
+    fontWeight: "600",
+  }}
+>
+  {comments.length} / 500 Characters
+</div>
 
       {isExpired && <h3 style={{ color: "red" }}>Survey Time Expired</h3>}
       {validationError && <div className="validation-error">{validationError}</div>}
 
-      <button className="submit-btn" onClick={handleSubmit} disabled={isExpired}>
-        SUBMIT
-      </button>
+     <button
+  className="submit-btn"
+  onClick={handleSubmit}
+  disabled={isExpired || isSubmitting}
+>
+  {isSubmitting ? "Submitting..." : "SUBMIT"}
+</button>
     </div>
   );
 }

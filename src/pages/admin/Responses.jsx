@@ -1,4 +1,30 @@
 function Responses({ surveys }) {
+
+  if (surveys.length === 0) {
+    return (
+      <section className="dashboard-panel">
+        <div
+          style={{
+            textAlign: "center",
+            padding: "60px 20px",
+          }}
+        >
+          <h2 style={{ color: "#1e3a8a" }}>
+            📭 No Feedback Available
+          </h2>
+
+          <p style={{ color: "#666", marginTop: "10px" }}>
+            No survey responses found for the selected airport.
+          </p>
+
+          <p style={{ color: "#999" }}>
+            Please select another airport or wait for new responses.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="dashboard-panel">
       <div className="panel-title-row">
