@@ -12,6 +12,7 @@ import { Bar } from "react-chartjs-2";
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 function Overview({ data }) {
+  console.log(data.stats.totalResponses);
   const { stats, airportCounts, dateCounts } = data;
 
   const chartOptions = {

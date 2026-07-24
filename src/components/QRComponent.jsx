@@ -1,9 +1,7 @@
 import { QRCodeCanvas } from "qrcode.react";
 
 function QRComponent() {
-  const surveyUrl =
-    "http://192.168.1.13:5173/survey";
-
+ const surveyUrl = "http://172.20.10.2:5173/survey";
   return (
     <div
       style={{

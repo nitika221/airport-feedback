@@ -149,6 +149,7 @@ function SurveyPage() {
   const [airportName, setAirportName] = useState("");
   const [airportCode, setAirportCode] = useState("");
   const [comments, setComments] = useState("");
+  const [photos, setPhotos] = useState([]);
 const [issueCategory, setIssueCategory] = useState("");
   const [ratings, setRatings] = useState({
     q1: "",
@@ -169,7 +170,6 @@ const [issueCategory, setIssueCategory] = useState("");
   const [validationError, setValidationError] = useState("");
   const [session, setSession] = useState(null);
   const [syncMessage, setSyncMessage] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAddAirport, setShowAddAirport] = useState(false);
   const [newAirport, setNewAirport] = useState({
     name: "",
@@ -182,14 +182,13 @@ const selectedAirport = airports.find(
 );
 
 const isInsideAirport =
-  selectedAirport &&
-  userLocation
+  selectedAirport && userLocation
     ? distanceInMeters(
         userLocation.lat,
         userLocation.lng,
         selectedAirport.lat,
         selectedAirport.lng
-      ) <= (selectedAirport.radiusMeters || 1000)
+      ) <= ((selectedAirport.radius || 5) * 1000)
     : false;
 
   const sortedAirports = useMemo(() => {
@@ -204,12 +203,15 @@ const isInsideAirport =
 
     for (const survey of pendingSurveys) {
       try {
-        const response = await fetch(`${API_URL}/submitSurvey`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...survey, offlineQueued: true }),
-        });
+     
 
+const response = await fetch(`${API_URL}/submitSurvey`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(survey),
+});
         if (!response.ok && response.status !== 409) {
           unsynced.push(survey);
         }
@@ -238,26 +240,42 @@ const isInsideAirport =
     }
   };
 
-  const startSurveySession = async () => {
-    try {
-      const response = await fetch(`${API_URL}/startSurvey`, { method: "POST" });
-      const data = await response.json();
-      setSession(data);
-      setTimeLeft(
-        Math.max(0, Math.ceil((new Date(data.expiresAt).getTime() - Date.now()) / 1000))
-      );
-    } catch {
-      const offlineSession = {
-        sessionId: `offline-${crypto.randomUUID()}`,
-        startedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 180000).toISOString(),
-      };
+ const startSurveySession = async () => {
+  console.log("startSurveySession called");
 
-      setSession(offlineSession);
-      setTimeLeft(180);
-      setSyncMessage("Offline mode: survey will sync when internet returns.");
-    }
-  };
+  try {
+    const response = await fetch(`${API_URL}/startSurvey`, {
+      method: "POST",
+    });
+
+    console.log("Status:", response.status);
+
+    const data = await response.json();
+    console.log("Data:", data);
+
+    setSession(data);
+    console.log("Session Data:", data);
+
+    setTimeLeft(
+      Math.max(
+        0,
+        Math.ceil((new Date(data.expiresAt).getTime() - Date.now()) / 1000)
+      )
+    );
+  } catch (error) {
+    console.log("Start Survey Error:", error);
+
+    const offlineSession = {
+      sessionId: `offline-${crypto.randomUUID()}`,
+      startedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 180000).toISOString(),
+    };
+
+    setSession(offlineSession);
+    setTimeLeft(180);
+    setSyncMessage("Offline mode: survey will sync when internet returns.");
+  }
+};
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -301,25 +319,28 @@ const isInsideAirport =
 let minDistance = Infinity;
 
 sortedAirports.forEach((airport) => {
-  const distanceKm =
-    Math.sqrt(
-      Math.pow(lat - airport.lat, 2) +
-      Math.pow(lng - airport.lng, 2)
-    ) * 111;
+  const distanceMeters = distanceInMeters(
+  lat,
+  lng,
+  airport.lat,
+  airport.lng
+);
 
-  if (distanceKm < minDistance) {
-    minDistance = distanceKm;
-    nearestAirport = airport;
-  }
+if (distanceMeters < minDistance) {
+  minDistance = distanceMeters;
+  nearestAirport = airport;
+}
 });
 console.log("Nearest Airport:", nearestAirport);
+console.log("Airport Object:", nearestAirport);
+console.log("Radius:", nearestAirport.radius);
+console.log("Distance:", minDistance);
 console.log("Distance (km):", minDistance);
-setDistance(minDistance);
+setDistance(minDistance / 1000);
 
 if (
   nearestAirport &&
-  minDistance <=
-    ((nearestAirport.radiusMeters || 1000) / 1000)
+  minDistance <= ((nearestAirport.radius || 5) * 1000)
 ) {
   setAirportName(nearestAirport.name);
   setAirportCode(nearestAirport.code);
@@ -329,11 +350,15 @@ if (
 }
       },
       (error) => {
-        console.log(error);
-        const firstAirport = sortedAirports[0];
-        setAirportName(firstAirport.name);
-        setAirportCode(firstAirport.code);
-      }
+  console.log(error);
+
+  setValidationError(
+    "Please enable Location Permission to submit the survey."
+  );
+
+  setAirportName("");
+  setAirportCode("");
+}
     );
   }, [sortedAirports]);
 
@@ -397,11 +422,13 @@ const progress = Math.round(
     };
 
     try {
-      const response = await fetch(`${API_URL}/airports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(airportPayload),
-      });
+     const response = await fetch(`${API_URL}/airports`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(airportPayload),
+});
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
@@ -429,8 +456,16 @@ const progress = Math.round(
   };
 
   const handleSubmit = async () => {
-    setIsSubmitting(true);
+    
+   if (!userLocation) {
+  alert("Please enable Location to submit the survey.");
+  return;
+}
 
+if (!isInsideAirport) {
+  alert("You must be inside the airport to submit the survey.");
+  return;
+}
     const hasAllRatings = questions.every((question) => ratings[question.key] !== "");
 
     if (!tripReason || !travelClass || !returnTrips || !hasAllRatings) {
@@ -447,48 +482,65 @@ const progress = Math.round(
 
     setValidationError("");
 
-    const surveyData = {
-      airportName,
-      airportCode,
-      tripReason,
-      travelClass,
-      returnTrips,
-      ratings,
-      comments,
-      issueCategory,
-      sessionId: session?.sessionId,
-      clientSubmissionId: crypto.randomUUID(),
-      submittedAt: new Date().toISOString(),
-    };
+   const formData = new FormData();
 
-    localStorage.setItem("surveyData", JSON.stringify(surveyData));
+formData.append("airportName", airportName);
+formData.append("airportCode", airportCode);
+formData.append("tripReason", tripReason);
+formData.append("travelClass", travelClass);
+formData.append("returnTrips", returnTrips);
+formData.append("comments", comments);
+formData.append("issueCategory", issueCategory);
+formData.append("sessionId", session?.sessionId);
+formData.append("clientSubmissionId", crypto.randomUUID());
+formData.append("submittedAt", new Date().toISOString());
+
+formData.append("ratings", JSON.stringify(ratings));
+
+photos.forEach((photo) => {
+  formData.append("photos", photo);
+});
+    // localStorage.setItem("surveyData", JSON.stringify(surveyData));
 
     try {
-      const response = await fetch(`${API_URL}/submitSurvey`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(surveyData),
-      });
+      console.log("Submitting FormData...");
+      for (const pair of formData.entries()) {
+  console.log(pair[0], pair[1]);
+}
+     const response = await fetch(`${API_URL}/submitSurvey`, {
+  method: "POST",
+  body: formData,
+
+});
+console.log(response.status);
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.message);
 
       navigate("/thank-you");
     } catch (error) {
-      queueOfflineSurvey(surveyData);
+     queueOfflineSurvey({
+  airportName,
+  airportCode,
+  tripReason,
+  travelClass,
+  returnTrips,
+  ratings,
+  comments,
+  issueCategory,
+  sessionId: session?.sessionId,
+  clientSubmissionId: crypto.randomUUID(),
+  submittedAt: new Date().toISOString(),
+  offlineQueued: true,
+});
       setSyncMessage(
         error.message?.includes("expired") || error.message?.includes("already")
           ? error.message
           : "No internet detected. Survey saved offline and will sync automatically."
       );
-      
       navigate("/thank-you");
     }
-    finally {
-  setIsSubmitting(false);
-}
   };
-
 
   return (
     <div className="container survey-shell">
@@ -691,6 +743,51 @@ className="issue-category-select"
   <option value="Staff Behaviour">👨‍💼 Staff Behaviour</option>
   <option value="Other">📌 Other</option>
 </select>
+<h3>Upload Complaint Photo (Optional)</h3>
+
+<h3>📸 Report an Issue (Optional)</h3>
+
+<p style={{ color: "#666", fontSize: "14px", marginBottom: "10px" }}>
+If you notice any issue (dirty washroom, damaged chair, parking problem,
+unclean area, etc.), take a photo to help airport staff resolve it faster.
+</p>
+
+<input
+  type="file"
+  accept="image/*"
+  multiple
+  onChange={(e) => setPhotos([...e.target.files])}
+/>
+
+{photos.length > 0 && (
+  <div
+    style={{
+      display: "flex",
+      gap: "10px",
+      flexWrap: "wrap",
+      marginTop: "12px",
+    }}
+  >
+    {photos.map((photo, index) => (
+      <div key={index}>
+        <img
+          src={URL.createObjectURL(photo)}
+          alt={`Issue ${index + 1}`}
+          style={{
+            width: "120px",
+            height: "120px",
+            objectFit: "cover",
+            borderRadius: "8px",
+            border: "1px solid #ddd",
+          }}
+        />
+        <p style={{ fontSize: "12px" }}>
+          {photo.name}
+        </p>
+      </div>
+    ))}
+  </div>
+)}
 
       <h3>Additional Comments</h3>
       <textarea
@@ -715,13 +812,9 @@ className="issue-category-select"
       {isExpired && <h3 style={{ color: "red" }}>Survey Time Expired</h3>}
       {validationError && <div className="validation-error">{validationError}</div>}
 
-     <button
-  className="submit-btn"
-  onClick={handleSubmit}
-  disabled={isExpired || isSubmitting}
->
-  {isSubmitting ? "Submitting..." : "SUBMIT"}
-</button>
+      <button className="submit-btn" onClick={handleSubmit} disabled={isExpired}>
+        SUBMIT
+      </button>
     </div>
   );
 }

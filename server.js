@@ -1,20 +1,38 @@
 import crypto from "node:crypto";
 import express from "express";
+console.log("=== THIS IS MY SERVER.JS ===");
 import cors from "cors";
 import mongoose from "mongoose";
+import multer from "multer";
+import path from "path";
 
 const app = express();
 const SURVEY_DURATION_MS = 3 * 60 * 1000;
 
 app.use(cors());
 app.use(express.json());
+app.use("/uploads", express.static("uploads"));
 
-mongoose
-  .connect(
-    "mongodb+srv://nitikaa2006_db_user:niti1812@airportsurveydb.4240rjb.mongodb.net/?appName=AirportSurveyDB"
-  )
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log(err));
+const storage = multer.diskStorage({
+
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+
+  filename: (req, file, cb) => {
+    cb(
+      null,
+      Date.now() +
+        path.extname(file.originalname)
+    );
+  },
+});
+const upload = multer({ storage });
+mongoose.connect(
+  "mongodb://nitikaa2006_db_user:Nitika1812@ac-ckrpbho-shard-00-00.4240rjb.mongodb.net:27017,ac-ckrpbho-shard-00-01.4240rjb.mongodb.net:27017,ac-ckrpbho-shard-00-02.4240rjb.mongodb.net:27017/?ssl=true&replicaSet=atlas-cz8zuv-shard-0&authSource=admin&appName=AirportSurveyDB"
+)
+.then(() => console.log("MongoDB Connected"))
+.catch((err) => console.error(err));
 
 const defaultAirports = [
   {
@@ -110,6 +128,7 @@ const AirportSchema = new mongoose.Schema({
 
 const SurveySessionSchema = new mongoose.Schema({
   sessionId: { type: String, required: true, unique: true },
+  deviceId: String,
   userIP: String,
   startedAt: Date,
   expiresAt: Date,
@@ -138,6 +157,8 @@ const SurveySchema = new mongoose.Schema({
   },
 
   comments: String,
+  issueCategory: String,
+photos: [String],
   submittedAt: String,
   syncedAt: { type: Date, default: Date.now },
 });
@@ -179,15 +200,18 @@ app.get("/", (req, res) => {
 });
 
 app.get("/airports", async (req, res) => {
+  console.log("AIRPORT ROUTE HIT");
   try {
     await seedAirports();
     const airports = await Airport.find({ status: "active" }).sort({ name: 1 });
     res.json(airports);
   } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Error Fetching Airports" });
+    console.error(error);
+    res.status(500).json({
+      message: error.message,
+    });
   }
-});
+});   
 
 app.post("/airports", async (req, res) => {
   try {
@@ -219,50 +243,45 @@ app.post("/airports", async (req, res) => {
     res.status(500).json({ message: "Error Saving Airport" });
   }
 });
-
 app.post("/startSurvey", async (req, res) => {
+  console.log("START SURVEY HIT");
   try {
     const startedAt = new Date();
     const expiresAt = new Date(startedAt.getTime() + SURVEY_DURATION_MS);
     const sessionId = crypto.randomUUID();
 
-   const deviceId =
- req.headers["x-device-id"] ||
- req.ip;
-
-const existing =
- await SurveySession.findOne({
-   deviceId,
-   submitted:true,
- });
-
-if(existing)
-{
- return res.status(409).json({
-  message:
-   "Survey already submitted from this device."
- });
-}
+   const deviceId = req.headers["x-device-id"] || req.ip;
 
 await SurveySession.create({
- sessionId,
- deviceId,
- userIP:req.ip,
- startedAt,
- expiresAt,
- submitted:false,
+  sessionId,
+  deviceId,
+  userIP: req.ip,
+  startedAt,
+  expiresAt,
+  submitted: false,
 });
-
     res.json({ sessionId, startedAt, expiresAt, durationSeconds: 180 });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Error Starting Survey" });
-  }
-});
+ } catch (error) {
+  console.error("START SURVEY ERROR:");
+  console.error(error);
 
-app.post("/submitSurvey", async (req, res) => {
+  res.status(500).json({
+    message: error.message,
+    stack: error.stack,
+  });
+}
+});
+app.post("/submitSurvey", upload.array("photos", 5), async (req, res) => {
   try {
-    const { sessionId, clientSubmissionId, submittedAt, offlineQueued } = req.body;
+    console.log("BODY:", req.body);
+console.log("FILES:", req.files);
+console.log("CONTENT TYPE:", req.headers["content-type"]);
+    const {
+  sessionId,
+  clientSubmissionId,
+  submittedAt,
+  offlineQueued,
+} = req.body;
 
     if (clientSubmissionId) {
       const duplicateSubmission = await Survey.findOne({ clientSubmissionId });
@@ -278,43 +297,44 @@ app.post("/submitSurvey", async (req, res) => {
         message: "Survey session is missing. Please reload the survey.",
       });
     }
+let session = await SurveySession.findOne({ sessionId });
 
-    let session = await SurveySession.findOne({ sessionId });
-    const duplicateDevice =
- await SurveySession.findOne({
-   deviceId:
-    session.deviceId,
-   submitted:true,
- });
+if (!session && offlineQueued && sessionId.startsWith("offline-")) {
+  const startedAt = new Date();
 
-if(
- duplicateDevice &&
- duplicateDevice.sessionId
- !== sessionId
-)
-{
- return res.status(409).json({
-   message:
-   "You have already participated."
- });
+  session = await SurveySession.create({
+    sessionId,
+    deviceId: req.ip,
+    userIP: req.ip,
+    startedAt,
+    expiresAt: new Date(submittedAt || Date.now()),
+    submitted: false,
+  });
 }
 
-    if (!session && offlineQueued && sessionId.startsWith("offline-")) {
-      const startedAt = new Date();
-      session = await SurveySession.create({
-        sessionId,
-        userIP: req.ip,
-        startedAt,
-        expiresAt: new Date(submittedAt || Date.now()),
-        submitted: false,
-      });
-    }
+if (!session) {
+  return res.status(400).json({
+    message: "Invalid survey session. Please start again.",
+  });
+}
+/*
+const duplicateDevice = await SurveySession.findOne({
+  deviceId: session.deviceId,
+  submitted: true,
+});
 
-    if (!session) {
-      return res.status(400).json({
-        message: "Invalid survey session. Please start again.",
-      });
-    }
+if (
+  duplicateDevice &&
+  duplicateDevice.sessionId !== sessionId
+) {
+  return res.status(409).json({
+    message: "You have already participated."
+  });
+}
+*/
+
+    
+    
 const existingSurvey = await Survey.findOne({
   sessionId,
 });
@@ -342,19 +362,43 @@ if (
       "Survey time expired. Please start a new survey.",
   });
 } 
+console.log("FILES:", req.files);
+console.log("PHOTOS TO SAVE:", req.files?.map(file => `/uploads/${file.filename}`));
+   const survey = new Survey({
+  airportName: req.body.airportName,
+  airportCode: req.body.airportCode,
+  tripReason: req.body.tripReason,
+  travelClass: req.body.travelClass,
+  returnTrips: req.body.returnTrips,
+  comments: req.body.comments,
+  issueCategory: req.body.issueCategory,
+  sessionId: req.body.sessionId,
+  clientSubmissionId: req.body.clientSubmissionId,
+  offlineQueued: false,
+  submittedAt: req.body.submittedAt,
+  ratings: JSON.parse(req.body.ratings),
+  photos: req.files
+  ? req.files.map((file) => `/uploads/${file.filename}`)
+  : [],
+});
 
-    const survey = new Survey(req.body);
-    await survey.save();
+await survey.save();
+const savedSurvey = await Survey.findById(survey._id);
+console.log("SAVED:", savedSurvey);
+console.log(survey);
 
     session.submitted = true;
     session.submittedAt = new Date();
     await session.save();
 
     res.json({ message: "Survey Saved Successfully" });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Error Saving Survey" });
-  }
+ } catch (error) {
+  console.error(error);
+  res.status(500).json({
+    message: error.message,
+    stack: error.stack,
+  });
+}
 });
 
 app.get("/surveys", async (req, res) => {

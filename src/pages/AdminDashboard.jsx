@@ -52,7 +52,10 @@ function AdminDashboard() {
   useEffect(() => {
     fetch("http://localhost:5000/surveys")
       .then((res) => res.json())
-      .then((data) => setSurveys(data))
+      .then((data) => {
+  console.log("Survey Data:", data);
+  setSurveys(data);
+})
       .catch((err) => console.log(err));
   }, []);
 const filteredSurveys = useMemo(() => {
@@ -63,15 +66,15 @@ const filteredSurveys = useMemo(() => {
   );
 }, [selectedAirport, surveys]);
   const dashboardData = useMemo(() => {
-    const airportCount = new Set(surveys.map((s) => s.airportCode)).size;
+    const airportCount = new Set(filteredSurveys.map((s) => s.airportCode)).size;
 
-    const todayResponses = surveys.filter((s) => {
+    const todayResponses = filteredSurveys.filter((s) => {
       return (
         new Date(s.submittedAt).toDateString() === new Date().toDateString()
       );
     }).length;
 
-    const allRatings = surveys.flatMap((survey) => {
+    const allRatings = filteredSurveys.flatMap((survey) => {
       if (!survey.ratings) return [];
 
       return questionLabels.map((question) => survey.ratings[question.key] || 0);
@@ -91,7 +94,7 @@ const filteredSurveys = useMemo(() => {
 
     const airportRatings = {};
 
-    surveys.forEach((survey) => {
+    filteredSurveys.forEach((survey) => {
       if (!survey.ratings) return;
 
       const total = questionLabels.reduce(
@@ -123,20 +126,20 @@ const filteredSurveys = useMemo(() => {
 
     const airportCounts = {};
 
-    surveys.forEach((survey) => {
+    filteredSurveys.forEach((survey) => {
       airportCounts[survey.airportCode] =
         (airportCounts[survey.airportCode] || 0) + 1;
     });
 
     const dateCounts = {};
 
-    surveys.forEach((survey) => {
+   filteredSurveys.forEach((survey) => {
       const date = new Date(survey.submittedAt).toLocaleDateString();
       dateCounts[date] = (dateCounts[date] || 0) + 1;
     });
 
     const questionAverages = questionLabels.map((question) => {
-      const ratings = surveys
+      const ratings = filteredSurveys
         .map((survey) => survey.ratings?.[question.key] || 0)
         .filter((rating) => rating > 0);
 
@@ -154,7 +157,7 @@ const filteredSurveys = useMemo(() => {
 
     return {
       stats: {
-        totalResponses: surveys.length,
+        totalResponses: filteredSurveys.length,
         airportCount,
         todayResponses,
         satisfactionScore,
@@ -166,8 +169,7 @@ const filteredSurveys = useMemo(() => {
       dateCounts,
       questionAverages,
     };
-  }, [surveys]);
-
+ }, [filteredSurveys]);
   const exportRows = filteredSurveys.map((survey) => ({
     Airport: survey.airportName,
     Code: survey.airportCode,
@@ -293,13 +295,21 @@ const filteredSurveys = useMemo(() => {
         
       </div>
 
-      {activeTab === "overview" && <Overview data={dashboardData} />}
+      {activeTab === "overview" && (
+  <Overview
+    key={selectedAirport}
+    data={dashboardData}
+  />
+)}
 
       {activeTab === "responses" && <Responses surveys={filteredSurveys} />}
 
-      {activeTab === "ratings" && (
-        <Ratings questionAverages={dashboardData.questionAverages} />
-      )}
+     {activeTab === "ratings" && (
+  <Ratings
+    key={selectedAirport}
+    questionAverages={dashboardData.questionAverages}
+  />
+)}
 
       {activeTab === "reports" && (
         <Reports
